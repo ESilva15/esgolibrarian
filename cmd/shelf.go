@@ -2,15 +2,24 @@ package cmd
 
 import (
 	"fmt"
+	"librarian/logger"
 
-	"librarian/librarian"
+	lib "librarian/librarian"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 func shelfMedia(cmd *cobra.Command, args []string) {
 	dest := args[len(args)-1]
 	sources := args[:len(args)-1]
+
+	opts := loadOptions(cmd)
+
+	librarian, err := lib.NewLibrarian(opts)
+	if err != nil {
+		logger.Printf(logrus.FatalLevel, "Failed to create librarian: %v", err)
+	}
 
 	librarian.MoveFiles(sources, dest)
 }

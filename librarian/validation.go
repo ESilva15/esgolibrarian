@@ -4,19 +4,18 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"librarian/logger"
 	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 )
 
-func getDurationVideo(path string) (float32, error) {
-	if exists, err := ffprobeExists(); !exists {
-		return 0, err
-	}
-
+func getDurationVideo(path string, opts *LibOptions) (float32, error) {
 	command := []string{
-		"/usr/bin/ffprobe",
+		opts.FFprobePath,
 		"-v", "error",
 		"-show_entries",
 		"format=duration",
@@ -24,8 +23,8 @@ func getDurationVideo(path string) (float32, error) {
 		"default=noprint_wrappers=1:nokey=1",
 		path,
 	}
+	logger.Println(logrus.InfoLevel, strings.Join(command, " "))
 	cmd := exec.Command(command[0], command[1:]...)
-	fmt.Println(strings.Join(command, " "))
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -50,27 +49,30 @@ func getDurationVideo(path string) (float32, error) {
 	return float32(duration), nil
 }
 
-func VerifyMediaIntegrity(path string) (string, error) {
-	if exists, err := ffmpegExists(); !exists {
-		return "", err
-	}
-
-	duration, err := getDurationVideo(path)
+func VerifyMediaIntegrity(path string, options *LibOptions) (string, error) {
+	duration, err := getDurationVideo(path, options)
 	if err != nil {
 		return "", err
 	}
+
 	// "-init_hw_device vaapi=va:/dev/dri/renderD128,driver=iHD -hwaccel vaapi -hwaccel_output_format"
-	command := []string{
-		"/usr/bin/ffmpeg",
-		"-v", "error",
+	hwaccelArgs := []string{
 		"-init_hw_device", "vaapi=va:/dev/dri/renderD128,driver=iHD",
 		"-hwaccel", "vaapi",
 		"-hwaccel_output_format", "vaapi",
+	}
+
+	command := []string{options.FFmpegPath}
+	if options.UseHWAccel {
+		command = append(command, hwaccelArgs...)
+	}
+	command = append(command,
+		"-v", "error",
 		"-i", path,
 		"-f", "null", "-",
 		"-progress", "pipe:1",
-	}
-	fmt.Println(strings.Join(command, " "))
+	)
+	logger.Println(logrus.InfoLevel, strings.Join(command, " "))
 	cmd := exec.Command(command[0], command[1:]...)
 
 	stderrPipe, err := cmd.StderrPipe()
@@ -95,7 +97,7 @@ func VerifyMediaIntegrity(path string) (string, error) {
 			line, err := reader.ReadString('\n')
 			if err != nil {
 				if err != io.EOF {
-					fmt.Println("Error reading stderr:", err)
+					logger.Printf(logrus.ErrorLevel, "Error reading stderr: %v\n", err)
 				}
 				break
 			}
@@ -121,20 +123,21 @@ func VerifyMediaIntegrity(path string) (string, error) {
 			progressSec := float32(progressParsed) / 1000.0 / 1000.0
 			percentage := (progressSec / duration) * 100
 
-			fmt.Printf("\rProgress: %.2f", percentage)
+			logger.NoLogf("\rAnalyzing: %.2f%%", percentage)
 		} else if strings.HasPrefix(line, "progress=end") {
-			fmt.Println("\nDone!")
+			logger.NoLogf("\n")
+			logger.Println(logrus.InfoLevel, "Done")
 		}
 	}
 
 	err = cmd.Wait()
 	if killErr != nil {
-		fmt.Println()
+		logger.NoLogf("\n")
 		return "", fmt.Errorf("aborted due to error output: %w", killErr)
 	}
 
 	if err != nil {
-		fmt.Println()
+		logger.NoLogf("\n")
 		return "", fmt.Errorf("ffmpeg exited with error: %w", err)
 	}
 

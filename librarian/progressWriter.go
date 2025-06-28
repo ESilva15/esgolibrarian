@@ -1,7 +1,7 @@
 package librarian
 
 import (
-	"fmt"
+	"librarian/logger"
 )
 
 type progressWriter struct {
@@ -16,7 +16,7 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 
 	percent := int(float64(pw.written) * 100 / float64(pw.total))
 	if percent != pw.lastOutput {
-		fmt.Printf("\rProgress: %d%%", percent)
+		logger.NoLogf("\rCopying: %d%%", percent)
 		pw.lastOutput = percent
 	}
 

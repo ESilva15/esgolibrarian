@@ -3,12 +3,21 @@ package cmd
 import (
 	"fmt"
 
-	"librarian/librarian"
+	lib "librarian/librarian"
+	"librarian/logger"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
 func validateMedia(cmd *cobra.Command, args []string) {
+	opts := loadOptions(cmd)
+
+	librarian, err := lib.NewLibrarian(opts)
+	if err != nil {
+		logger.Printf(logrus.FatalLevel, "Failed to create librarian: %v", err)
+	}
+
 	librarian.ValidateFiles(args)
 }
 

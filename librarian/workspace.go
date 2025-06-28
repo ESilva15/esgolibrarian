@@ -17,11 +17,3 @@ func pathExists(path string) (bool, error) {
 	}
 	return true, nil
 }
-
-func ffmpegExists() (bool, error) {
-	return pathExists("/usr/bin/ffmpeg")
-}
-
-func ffprobeExists() (bool, error) {
-	return pathExists("/usr/bin/ffprobe")
-}
