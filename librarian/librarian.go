@@ -2,6 +2,7 @@ package librarian
 
 import (
 	"librarian/logger"
+	"librarian/utils"
 )
 
 type LibOptions struct {
@@ -30,11 +31,11 @@ type Librarian struct {
 
 func NewLibrarian(opts *LibOptions) (*Librarian, error) {
 	// Check tooling
-	if exists, err := pathExists(opts.FFmpegPath); !exists {
+	if exists, err := utils.PathExists(opts.FFmpegPath); !exists {
 		return nil, err
 	}
 
-	if exists, err := pathExists(opts.FFprobePath); !exists {
+	if exists, err := utils.PathExists(opts.FFprobePath); !exists {
 		return nil, err
 	}
 

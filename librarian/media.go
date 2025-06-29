@@ -3,6 +3,7 @@ package librarian
 import (
 	"errors"
 	"librarian/logger"
+	"librarian/utils"
 	"path/filepath"
 	"time"
 
@@ -49,11 +50,11 @@ func NewMediaState() *Media {
 
 func validateDestPath(dest string) (string, error) {
 	// Destiny path must be a directory (for now)
-	if val, err := pathExists(dest); !val {
+	if val, err := utils.PathExists(dest); !val {
 		return err.Error(), ErrDestPathNotExist
 	}
 
-	if !isDir(dest) {
+	if !utils.IsDir(dest) {
 		return ErrDestNotDir.Error(), ErrDestNotDir
 	}
 
