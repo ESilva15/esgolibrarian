@@ -178,7 +178,7 @@ func (m *Media) SetFilesize() {
 		m.State = false
 	}
 
-	m.FileSize = int(file.Size())
+	m.FileSize = file.Size()
 }
 
 func (m *Media) CopyFile(opts *LibOptions) {
