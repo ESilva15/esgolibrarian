@@ -3,6 +3,7 @@ package logger
 import (
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -14,8 +15,8 @@ type Logger struct {
 	fileLogger    *logrus.Logger
 }
 
-const (
-	defaultLogPath = "/home/esilva/.config/golibrarian/golibrarian.log"
+var (
+	defaultLogPath = "/golibrarian.log"
 )
 
 var (
@@ -60,4 +61,8 @@ func SetOptions(consoleOut bool) {
 	logger = getInstance()
 
 	logger.consoleLogger.SetOutput(io.Discard)
+}
+
+func SetLogpath(dir string) {
+	defaultLogPath = filepath.Join(dir, defaultLogPath)
 }
