@@ -103,6 +103,11 @@ func (c *Cart) CopyFiles(dest string, options *LibOptions) {
 			continue
 		}
 
+		curMedia.SetFilesize()
+		if curMedia.Err != nil {
+			continue
+		}
+
 		// Verify the integrity with ffmpeg
 		curMedia.VerifyIntegrity(options)
 		if curMedia.Err != nil {

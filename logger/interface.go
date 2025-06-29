@@ -7,6 +7,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+func Fatalf(format string, v ...any) {
+	logger.fileLogger.Fatalf(format, v...)
+	logger.consoleLogger.Fatalf(format, v...)
+}
+
 func Println(lvl logrus.Level, v ...any) {
 	logger := getInstance()
 

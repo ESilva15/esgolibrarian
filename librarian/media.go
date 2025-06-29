@@ -1,10 +1,18 @@
 package librarian
 
 import (
+	"bufio"
 	"errors"
+	"fmt"
+	"io"
 	"librarian/logger"
 	"librarian/utils"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -23,6 +31,8 @@ var (
 )
 
 type Media struct {
+	FileSize         int64         `json:"file_size"`   // in bytes
+	FileLength       float32       `json:"file_length"` // in milliseconds
 	Path             string        `json:"path"`
 	DestPath         string        `json:"dest_path"`
 	Hash             string        `json:"hash"`
@@ -36,6 +46,8 @@ type Media struct {
 
 func NewMediaState() *Media {
 	return &Media{
+		FileSize:         0,
+		FileLength:       0,
 		Path:             "",
 		DestPath:         "",
 		Hash:             "",
@@ -150,12 +162,23 @@ func (m *Media) ValidateChecksums() {
 
 func (m *Media) VerifyIntegrity(opts *LibOptions) {
 	analysisStart := time.Now()
-	errDetails, err := VerifyMediaIntegrity(m.Path, opts)
+	errDetails, err := m.IntegrityCheck(opts)
 	m.AnalysisDuration = time.Now().UTC().Sub(analysisStart) / 1e6
 
 	if err != nil {
 		m.FailMediaIntegrity(errDetails, err)
 	}
+}
+
+func (m *Media) SetFilesize() {
+	file, err := os.Stat(m.Path)
+	if err != nil {
+		m.Err = err
+		m.Details = err.Error()
+		m.State = false
+	}
+
+	m.FileSize = int(file.Size())
 }
 
 func (m *Media) CopyFile(opts *LibOptions) {
@@ -166,4 +189,101 @@ func (m *Media) CopyFile(opts *LibOptions) {
 	if err != nil {
 		m.FailMediaCopy(err)
 	}
+}
+
+func (m *Media) IntegrityCheck(options *LibOptions) (string, error) {
+	var err error
+
+	m.FileLength, err = getDurationVideo(m.Path, options)
+	if err != nil {
+		return "", err
+	}
+
+	// "-init_hw_device vaapi=va:/dev/dri/renderD128,driver=iHD -hwaccel vaapi -hwaccel_output_format"
+	hwaccelArgs := []string{
+		"-init_hw_device", "vaapi=va:/dev/dri/renderD128,driver=iHD",
+		"-hwaccel", "vaapi",
+		"-hwaccel_output_format", "vaapi",
+	}
+
+	command := []string{options.FFmpegPath}
+	if options.UseHWAccel {
+		command = append(command, hwaccelArgs...)
+	}
+	command = append(command,
+		"-v", "error",
+		"-i", m.Path,
+		"-f", "null", "-",
+		"-progress", "pipe:1",
+	)
+	logger.Println(logrus.InfoLevel, strings.Join(command, " "))
+	cmd := exec.Command(command[0], command[1:]...)
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return "", err
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	var once sync.Once
+	var killErr error
+
+	go func() {
+		reader := bufio.NewReader(stderrPipe)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err != io.EOF {
+					logger.Printf(logrus.ErrorLevel, "Error reading stderr: %v\n", err)
+				}
+				break
+			}
+
+			if strings.TrimSpace(line) != "" {
+				once.Do(func() {
+					killErr = cmd.Process.Kill()
+				})
+				break
+			}
+		}
+	}()
+
+	scanner := bufio.NewScanner(stdoutPipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "out_time_ms=") {
+			progressStr := strings.TrimPrefix(line, "out_time_ms=")
+			progressParsed, err := strconv.ParseFloat(progressStr, 32)
+			if err != nil {
+				return "", err
+			}
+			progressSec := float32(progressParsed) / 1000.0 / 1000.0
+			percentage := (progressSec / m.FileLength) * 100
+
+			logger.NoLogf("\rAnalyzing: %.2f%%", percentage)
+		} else if strings.HasPrefix(line, "progress=end") {
+			logger.NoLogf("\n")
+			logger.Println(logrus.InfoLevel, "Done")
+		}
+	}
+
+	err = cmd.Wait()
+	if killErr != nil {
+		logger.NoLogf("\n")
+		return "", fmt.Errorf("aborted due to error output: %w", killErr)
+	}
+
+	if err != nil {
+		logger.NoLogf("\n")
+		return "", fmt.Errorf("ffmpeg exited with error: %w", err)
+	}
+
+	return "", nil
 }
